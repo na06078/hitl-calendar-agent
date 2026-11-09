@@ -97,6 +97,13 @@ def time_value(value):
         return None
 
 
+def show_public_error(value):
+    if value is None or value == "":
+        return
+    message = value.get("message") if isinstance(value, dict) else value
+    st.error(message if isinstance(message, str) and message else "처리 오류를 확인하지 못했습니다. 연결 상태와 처리 기록을 확인해 주세요.")
+
+
 def show_candidate(job):
     draft = job["draft"]
     st.text_area("공지 원문", value=job["source_text"], key="source_" + job["id"],
@@ -121,8 +128,7 @@ def show_candidate(job):
             st.text(quote)
         for ambiguity in draft.get("ambiguities", []):
             st.write(ambiguity)
-    if job.get("last_error"):
-        st.error(job["last_error"])
+    show_public_error(job.get("last_error"))
 
 
 def render_review_form(job, stale=False):
@@ -221,8 +227,7 @@ def render_history(service, jobs):
     job = service.get_job(selected)
     st.write("처리 상태: " + STATUS_LABELS.get(job["status"], "상태 확인 필요"))
     st.caption("기록 시각: " + job.get("updated_at", ""))
-    if job.get("last_error"):
-        st.error(job["last_error"])
+    show_public_error(job.get("last_error"))
     if job["status"] == "unknown":
         st.warning("등록 결과를 아직 확정하지 못했습니다. 아래 버튼은 기존 일정 ID만 조회하며 새 일정을 만들지 않습니다.")
         if st.button("등록 상태 확인", key="reconcile_" + selected):
