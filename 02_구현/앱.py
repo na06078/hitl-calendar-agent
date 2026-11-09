@@ -60,8 +60,13 @@ def render_connection(service, readiness):
               ("Google 인증 토큰 파일", "token_file_present"), ("등록 대상 캘린더", "target_calendar_set")]
     for label, key in checks:
         st.write(f"{label}: {'준비됨' if readiness.get(key) else '준비 필요'}")
-    st.caption("파일 준비 상태이며 실제 계정 인증 성공을 뜻하지는 않습니다. 키와 토큰 값은 표시하지 않습니다.")
-    if st.button("Google 계정 연결", key="connect_google", disabled=not readiness.get("client_file_present", False)):
+    st.caption("저장된 인증 자료의 현황입니다. 실제 캘린더 조회·등록 성공과는 구분하며, 키와 토큰 값은 표시하지 않습니다.")
+    login_saved = bool(readiness.get("token_file_present", False))
+    if login_saved:
+        st.success("Google 로그인 정보가 저장되어 있습니다.")
+        st.caption("로그인을 반복할 필요는 없습니다. 계정을 다시 인증하려는 경우에만 아래 버튼을 사용하세요.")
+    connect_label = "Google 계정 다시 연결" if login_saved else "Google 계정 연결"
+    if st.button(connect_label, key="connect_google", disabled=not readiness.get("client_file_present", False)):
         try:
             with st.spinner("브라우저에서 Google 계정 연결을 완료해 주세요."):
                 service.connect_google()

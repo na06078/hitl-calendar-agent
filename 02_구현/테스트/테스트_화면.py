@@ -311,6 +311,25 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(len(self.service.operations), 1)
 
 
+    def test_saved_login_has_persistent_status_and_reconnect_label_without_relogin(self):
+        self.service.ready["token_file_present"] = True
+        app = self.app()
+        self.assertTrue(any(item.value == "Google 로그인 정보가 저장되어 있습니다." for item in app.success))
+        self.assertEqual(app.button(key="connect_google").label, "Google 계정 다시 연결")
+        app.run()
+        self.assertTrue(any(item.value == "Google 로그인 정보가 저장되어 있습니다." for item in app.success))
+        self.assertEqual(self.service.operations, [])
+
+
+    def test_missing_login_keeps_the_first_connect_action_without_a_success_status(self):
+        self.service.ready["token_file_present"] = False
+        app = self.app()
+        self.assertEqual(app.button(key="connect_google").label, "Google 계정 연결")
+        self.assertFalse(app.button(key="connect_google").disabled)
+        self.assertFalse(app.success)
+        self.assertEqual(self.service.operations, [])
+
+
     def test_analysis_summary_reads_the_current_state_after_review(self):
         job = synthetic_job()
         self.service.analysis_result = [deepcopy(job)]
