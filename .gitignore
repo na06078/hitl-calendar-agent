@@ -1,0 +1,47 @@
+# 비밀값과 환경별 설정
+.env
+.env.*
+!.env.example
+credentials.json
+credentials*.json
+client_secret*.json
+token.json
+token*.json
+.credentials/
+.secrets/
+비공개/
+인증자료/
+
+# 재생성할 수 있는 환경과 캐시
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+node_modules/
+dist/
+build/
+
+# 개인 일정·원문·실행 상태와 원시 로그
+.local/
+data/
+logs/
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite-journal
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+*.sqlite3-shm
+*.log
+
+# OS 메타데이터
+.DS_Store
+Thumbs.db
