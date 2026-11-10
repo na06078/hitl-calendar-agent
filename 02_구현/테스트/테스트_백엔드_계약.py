@@ -39,7 +39,7 @@ class ModelTests(OfflineCase):
         store = Store(self.root / '출력.sqlite')
         self.addCleanup(store.close)
         cases = [(N(status='incomplete', output=[], output_text=''), 'model_incomplete'),
-                 (N(status='completed', output=[N(content=[N(type='refusal')])], output_text=''), 'model_refusal'),
+                 (N(status='completed', output=[N(type='message', content=[N(type='refusal')])], output_text=''), 'model_refusal'),
                  (N(status='completed', output=[], output_text='not json'), 'model_output'),
                  (N(status='completed', output=[], output_text='{}'), 'model_output')]
         for response, code in cases:

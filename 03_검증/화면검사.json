@@ -1,0 +1,83 @@
+{
+  "started_at": "2026-11-10T07:14:49.008064+00:00",
+  "finished_at": "2026-11-10T07:14:58.641043+00:00",
+  "passed": true,
+  "provider_actions_clicked": false,
+  "pending_empty": true,
+  "created_history_and_calendar_link": true,
+  "edited_and_reapproved_decisions_visible": true,
+  "history_survives_reload": true,
+  "narrow_dimensions": {
+    "viewport": 390,
+    "document": 390,
+    "main": [
+      {
+        "client": 380,
+        "scroll": 380
+      }
+    ]
+  },
+  "narrow_final_control_accessible": true,
+  "ledger_unchanged": true,
+  "counts": {
+    "jobs": 5,
+    "model_calls": 2,
+    "sends": 3
+  },
+  "images": [
+    {
+      "file": "03_검증/화면/수정후_새충돌검토.png",
+      "sha256": "a97de21c1a7f0b7fec539375de83c43b2392d1d443ceccc97e8961f94adae2e5",
+      "width": 1440,
+      "height": 1200,
+      "original_bytes_preserved": true,
+      "visual_review": "에이전트가 실제 캡처를 열어 선택/상태·가림·비밀/계정 정보 노출 여부를 확인함"
+    },
+    {
+      "file": "03_검증/화면/재판정후_검토유지.png",
+      "sha256": "d4a62165a353e9fcbac18a27adf56fe6381da48961321fc401ddece627419e8f",
+      "width": 1440,
+      "height": 1200,
+      "original_bytes_preserved": true,
+      "visual_review": "에이전트가 실제 캡처를 열어 선택/상태·가림·비밀/계정 정보 노출 여부를 확인함"
+    },
+    {
+      "file": "03_검증/화면/처리기록_등록완료.png",
+      "sha256": "57a04e628ead86f7a53355e98ed2e711d1215278c6be4590c5aac954552e9198",
+      "width": 1440,
+      "height": 1200,
+      "original_bytes_preserved": true,
+      "visual_review": "보완 후 실제 재캡처 확인. 좁은 창 2장은 이전 시각 검수본과 바이트 동일, 넓은 창은 새 캡처를 직접 시각 검수.",
+      "original_source": ".local/실연동검증/보완후_처리기록_등록완료.png",
+      "after_CAL03_fix": true
+    },
+    {
+      "file": "03_검증/화면/처리기록_좁은창.png",
+      "sha256": "7b269a078463b2caa463e05ddbd01a07d3c8b991eb6971e1dceebaa027d361b9",
+      "width": 390,
+      "height": 844,
+      "original_bytes_preserved": true,
+      "visual_review": "보완 후 실제 재캡처 확인. 좁은 창 2장은 이전 시각 검수본과 바이트 동일, 넓은 창은 새 캡처를 직접 시각 검수.",
+      "original_source": ".local/실연동검증/보완후_처리기록_좁은창.png",
+      "after_CAL03_fix": true
+    },
+    {
+      "file": "03_검증/화면/연결준비_최종_좁은창.png",
+      "sha256": "88374b2a18988ae71a34fa31a489df9e5017209960101b037d8c6c60ea7a2ec8",
+      "width": 390,
+      "height": 844,
+      "original_bytes_preserved": true,
+      "visual_review": "보완 후 실제 재캡처 확인. 좁은 창 2장은 이전 시각 검수본과 바이트 동일, 넓은 창은 새 캡처를 직접 시각 검수.",
+      "original_source": ".local/실연동검증/보완후_연결준비_최종_좁은창.png",
+      "after_CAL03_fix": true
+    }
+  ],
+  "limits": [
+    "종료 상태를 읽는 최종 검사는 신규 모델·Calendar 요청을 실행하지 않음.",
+    "공개 캡처는 합성 시험 자료이며 계정·인증값을 표시하지 않음.",
+    "종일 수정/재판정 화면은 해당 시점의 대기 상태, 처리 기록은 생성이 확인된 과거 이력. 시험 이벤트는 검증 뒤 삭제됨.",
+    "390px에서 큰 제목의 마지막 글자 줄바꿈은 알려진 조판 한계. 주요 상태·버튼 가림/가로 넘침은 확인되지 않음.",
+    "원문과 접힌 상세의 보이지 않는 부분을 캡처로 확인했다고 주장하지 않음."
+  ],
+  "normal_service_cache_rebuilt": true
+}

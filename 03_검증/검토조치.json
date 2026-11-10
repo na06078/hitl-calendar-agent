@@ -1,0 +1,51 @@
+{
+  "independent_review": {
+    "delegation_id": "deleg_0e76df47",
+    "standards": "fail",
+    "spec": "fail",
+    "passed": false,
+    "unique_finding": "CAL-03",
+    "evidence": "정적 도달 가능성. 테스트/실제 API를 검토자가 실행하지 않음."
+  },
+  "parent_resolution": {
+    "status": "수정·부모 재검증 완료",
+    "independent_re_review_performed": false,
+    "code_changes": [
+      "OpenAI HTTP 오류의 code/param 문자열 확인",
+      "output와 message.content 컨테이너 확인 및 output_text 접근을 제한된 파싱 경계로 이동",
+      "Google freebusy 최상위/calendars/대상 calendar 객체 타입 검증"
+    ],
+    "observed_red_green": [
+      "test_malformed_http_error_metadata_stays_inside_the_public_error_boundary",
+      "test_null_sdk_response_containers_become_safe_model_output_errors",
+      "test_malformed_freebusy_containers_are_public_read_errors"
+    ],
+    "additional_verification_not_claimed_red": [
+      "서비스/화면 추출 오류와 부작용 없음",
+      "재판정 오류 기록·호출 예약·중단점 유지",
+      "잘못된 Google 사전 검사에 모델 예약 없음",
+      "저장된 실제 합성 후보 내용의 SDK 대역 봉투 재생"
+    ],
+    "final_tests": 76,
+    "new_unique_test_ids": [
+      "테스트.테스트_백엔드_연결.GoogleTests.test_malformed_freebusy_containers_are_public_read_errors",
+      "테스트.테스트_백엔드_연결.OpenAITransportTests.test_malformed_http_error_metadata_stays_inside_the_public_error_boundary",
+      "테스트.테스트_백엔드_연결.OpenAITransportTests.test_null_sdk_response_containers_become_safe_model_output_errors",
+      "테스트.테스트_백엔드_연결.OpenAITransportTests.test_saved_synthetic_candidates_replay_through_the_installed_sdk",
+      "테스트.테스트_통합.ConsumerIntegrationTests.test_malformed_google_preflight_is_visible_before_any_model_reservation",
+      "테스트.테스트_통합.ConsumerIntegrationTests.test_null_sdk_extract_is_public_error_without_jobs_or_calendar_writes",
+      "테스트.테스트_통합.ConsumerIntegrationTests.test_null_sdk_rejudge_records_failure_and_preserves_the_review_pause"
+    ],
+    "final_real_ui_passed": true,
+    "normal_service_rebuilt": true,
+    "final_real_google_read_passed": true,
+    "real_model_reservations_remain": 2,
+    "real_creates_remain": 3,
+    "test_events_remaining_after_cleanup": 0
+  },
+  "limits": [
+    "독립 원 fail 판정을 PASS로 덮어쓰지 않음. 부모의 수정/검증을 독립 재검토로 부르지 않음.",
+    "추가 유료 모델·Google 생성/삭제를 하지 않음. 실제 정상 실호출과 최종 파서의 대역/재생 검증을 구분.",
+    "캐시 SDK 자체 갱신은 초기 인증 로드 갱신과 다른 경계이며 별도 차단 결함으로 지적된 것은 아님."
+  ]
+}

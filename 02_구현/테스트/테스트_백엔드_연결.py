@@ -23,6 +23,127 @@ class HttpTransport:
         pass
 
 class OpenAITransportTests(OfflineCase):
+    def test_saved_synthetic_candidates_replay_through_the_installed_sdk(self):
+        import httpx2
+        from pathlib import Path
+        from 일정도우미.저장소 import Store
+        from 일정도우미.모델연결 import OpenAIAdapter, make_client
+        # 실제 저장 후보의 내용 재생입니다. 아래 SDK 봉투는 대역이며 원시 HTTP 기록이 아닙니다.
+        dataset = json.loads((Path(__file__).resolve().parents[2] / '03_검증/평가자료.json').read_text(encoding='utf-8'))
+        expected = [case['extracted_draft'] for case in dataset['cases']]
+        response = {'id': 'resp_replay', 'object': 'response', 'created_at': 0,
+                    'model': 'gpt-5.6-luna', 'status': 'completed', 'output': [
+                        {'type': 'message', 'id': 'msg_replay', 'role': 'assistant', 'status': 'completed',
+                         'content': [{'type': 'output_text', 'text': json.dumps({'events': expected}, ensure_ascii=False), 'annotations': []}]}]}
+        calls = []
+        def replay(request):
+            calls.append(request)
+            return httpx2.Response(200, json=response)
+        client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(replay), trust_env=False))
+        self.addCleanup(client.close)
+        store = Store(self.root / '저장후보재생.sqlite')
+        self.addCleanup(store.close)
+        actual = OpenAIAdapter(Settings(self.root, api_key='project-fake', llm_call_limit=1), store, client).extract(dataset['source_text'], dataset['reference_date'])
+        self.assertEqual(len(actual), 5)
+        self.assertEqual(actual, expected)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(store.calls_used(), 1)
+
+    def test_null_sdk_response_containers_become_safe_model_output_errors(self):
+        import httpx2
+        from 일정도우미.저장소 import Store
+        from 일정도우미.모델연결 import OpenAIAdapter, make_client
+        outputs = [None, [{'type': 'message', 'id': 'msg_fake', 'role': 'assistant',
+                           'status': 'completed', 'content': None}]]
+        for index, output in enumerate(outputs):
+            with self.subTest(index=index):
+                calls = []
+                def response(request):
+                    calls.append(request)
+                    return httpx2.Response(200, json={'id': 'resp_fake', 'object': 'response',
+                        'created_at': 0, 'model': 'gpt-5.6-luna', 'status': 'completed', 'output': output})
+                client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(response), trust_env=False))
+                self.addCleanup(client.close)
+                store = Store(self.root / f'응답컨테이너_{index}.sqlite')
+                self.addCleanup(store.close)
+                caught = None
+                try:
+                    OpenAIAdapter(Settings(self.root, api_key='project-fake', llm_call_limit=1), store, client).extract('합성 공지', '2026-11-10')
+                except Exception as error:
+                    caught = error
+                self.assertIsInstance(caught, ServiceError)
+                self.assertEqual(caught.code, 'model_output')
+                self.assertTrue(caught.__suppress_context__)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(store.calls_used(), 1)
+        # 선택적 reasoning.content=null은 message.content=null과 구별합니다.
+        valid_output = [{'type': 'reasoning', 'id': 'rs_fake', 'summary': [], 'content': None},
+                        {'type': 'message', 'id': 'msg_fake', 'role': 'assistant', 'status': 'completed',
+                         'content': [{'type': 'output_text', 'text': '{"events": []}', 'annotations': []}]}]
+        client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(lambda request: httpx2.Response(200, json={
+            'id': 'resp_fake', 'object': 'response', 'created_at': 0, 'model': 'gpt-5.6-luna',
+            'status': 'completed', 'output': valid_output})), trust_env=False))
+        self.addCleanup(client.close)
+        store = Store(self.root / '정상추론.sqlite')
+        self.addCleanup(store.close)
+        self.assertEqual(OpenAIAdapter(Settings(self.root, api_key='project-fake', llm_call_limit=1), store, client).extract('일정 없는 공지', '2026-11-10'), [])
+        self.assertEqual(store.calls_used(), 1)
+
+    def test_malformed_http_error_metadata_stays_inside_the_public_error_boundary(self):
+        import httpx2
+        import traceback
+        from 일정도우미.저장소 import Store
+        from 일정도우미.모델연결 import OpenAIAdapter, make_client
+        cases = [(['private-marker'], 'model'), ({'private': 'marker'}, 'model'),
+                 ('model_not_found', ['private-marker']), ('model_not_found', {'private': 'marker'})]
+        for index, (code, parameter) in enumerate(cases):
+            with self.subTest(index=index):
+                calls = []
+                def failure(request):
+                    calls.append(request)
+                    return httpx2.Response(400, json={'error': {'message': 'private-provider-message',
+                        'type': 'invalid_request_error', 'code': code, 'param': parameter}})
+                client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(failure), trust_env=False))
+                self.addCleanup(client.close)
+                store = Store(self.root / f'오류메타_{index}.sqlite')
+                self.addCleanup(store.close)
+                caught = None
+                try:
+                    OpenAIAdapter(Settings(self.root, api_key='project-fake', llm_call_limit=1), store, client).extract('합성 공지', '2026-11-10')
+                except Exception as error:
+                    caught = error
+                self.assertIsInstance(caught, ServiceError)
+                self.assertEqual(caught.code, 'model_transport')
+                self.assertIn('HTTP 400', caught.message)
+                self.assertTrue(caught.__suppress_context__)
+                self.assertNotIn('private-provider-message', ''.join(traceback.format_exception(caught)))
+                self.assertNotIn('private-marker', caught.message)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(store.calls_used(), 1)
+
+    def test_sdk_http_failure_exposes_only_safe_status_code_and_parameter(self):
+        import httpx2
+        from 일정도우미.저장소 import Store
+        from 일정도우미.모델연결 import OpenAIAdapter, make_client
+        requests = []
+        def unavailable(request):
+            requests.append(request)
+            return httpx2.Response(404, json={'error': {'message': 'not-for-public-display',
+                'type': 'invalid_request_error', 'code': 'model_not_found', 'param': 'model'}})
+        client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(unavailable), trust_env=False))
+        self.addCleanup(client.close)
+        store = Store(self.root / '상태.sqlite')
+        self.addCleanup(store.close)
+        with self.assertRaises(ServiceError) as caught:
+            OpenAIAdapter(Settings(self.root, api_key='project-fake', llm_call_limit=1), store, client).extract('합성 공지', '2026-11-10')
+        self.assertEqual(caught.exception.code, 'model_transport')
+        self.assertIn('HTTP 404', caught.exception.message)
+        self.assertIn('model_not_found', caught.exception.message)
+        self.assertIn('model', caught.exception.message)
+        self.assertNotIn('not-for-public-display', caught.exception.message)
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(store.calls_used(), 1)
+
     def test_both_real_sdk_adapters_run_through_service_with_only_http_fakes(self):
         import httpx2
         from 일정도우미.저장소 import Store
@@ -123,6 +244,25 @@ class GoogleTests(OfflineCase):
         api = build('calendar', 'v3', http=http, static_discovery=True, cache_discovery=False, num_retries=0)
         return GoogleCalendarAdapter(Settings(self.root, calendar_id='chosen'), api=api), http
 
+    def test_malformed_freebusy_containers_are_public_read_errors(self):
+        values = [None, [], {}, {'calendars': None}, {'calendars': []},
+                  {'calendars': {'chosen': None}}, {'calendars': {'chosen': []}},
+                  {'calendars': {'chosen': {'busy': None}}}]
+        for index, value in enumerate(values):
+            with self.subTest(index=index):
+                adapter, http = self.adapter([value])
+                self.addCleanup(adapter.close)
+                caught = None
+                try:
+                    adapter.busy(datetime.fromisoformat('2026-11-10T00:00:00+09:00'), datetime.fromisoformat('2026-11-11T00:00:00+09:00'))
+                except Exception as error:
+                    caught = error
+                self.assertIsInstance(caught, ServiceError)
+                self.assertEqual(caught.code, 'calendar_read')
+                self.assertTrue(caught.__suppress_context__)
+                self.assertEqual(len(http.calls), 1)
+                self.assertTrue(all('/freeBusy' in call['uri'] for call in http.calls))
+
     def test_partial_freebusy_and_http_auth_errors_are_safe_no_retry(self):
         for response, code in [({'calendars': {'chosen': {'errors': [{'reason': 'internalError'}], 'busy': []}}}, 'calendar_read'), ((401, {'error': {'message': 'sensitive'}}), 'google_auth'), ((503, {'error': {'message': 'sensitive'}}), 'calendar_read')]:
             with self.subTest(code=code):
@@ -168,6 +308,39 @@ class GoogleTests(OfflineCase):
             self.assertEqual(json.loads((self.root / '비공개' / '구글_토큰.json').read_text(encoding='utf-8')), {'token': 'explicit-fake'})
             self.assertFalse((self.root / '비공개' / '구글_토큰.json.tmp').exists())
 
+    def test_expired_token_refreshes_once_and_persists_without_opening_login(self):
+        from unittest.mock import patch, Mock
+        from 일정도우미.캘린더연결 import SCOPES
+        private = self.root / '비공개'
+        private.mkdir()
+        token = private / '구글_토큰.json'
+        token.write_text(json.dumps({'token': 'old-fake', 'refresh_token': 'r-fake',
+            'client_id': 'id-fake', 'client_secret': 's-fake',
+            'token_uri': 'https://oauth2.googleapis.com/token', 'expiry': '2020-01-01T00:00:00Z',
+            'scopes': SCOPES}), encoding='utf-8')
+        requests = []
+        def token_request(**kwargs):
+            requests.append(kwargs)
+            return SimpleNamespace(status=200, headers={}, data=json.dumps({
+                'access_token': 'new-fake', 'expires_in': 3600, 'token_type': 'Bearer'}).encode())
+        with patch('google_auth_httplib2.Request', return_value=token_request), \
+             patch('googleapiclient.discovery.build', return_value=Mock()), \
+             patch('google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file', side_effect=AssertionError('재로그인 금지')):
+            adapter = GoogleCalendarAdapter(Settings(self.root, calendar_id='chosen'))
+            self.addCleanup(adapter.close)
+            error = None
+            try:
+                adapter._api()
+            except ServiceError as exc:
+                error = exc.code
+            self.assertIsNone(error, '갱신 권한이 있는 만료 토큰은 로그인 창 없이 갱신해야 합니다.')
+        self.assertEqual(len(requests), 1)
+        self.assertEqual(requests[0]['url'], 'https://oauth2.googleapis.com/token')
+        saved = json.loads(token.read_text(encoding='utf-8'))
+        self.assertEqual(saved['token'], 'new-fake')
+        self.assertEqual(saved['refresh_token'], 'r-fake')
+        self.assertEqual(saved['client_secret'], 's-fake')
+
     def test_authorized_http_disables_implicit_auth_retry(self):
         from unittest.mock import patch, Mock
         (self.root / '비공개').mkdir()
@@ -176,6 +349,31 @@ class GoogleTests(OfflineCase):
             adapter = GoogleCalendarAdapter(Settings(self.root, calendar_id='chosen'))
             adapter._api()
             self.assertEqual(authorized.call_args.kwargs.get('max_refresh_attempts'), 0)
+
+    def test_refresh_failure_has_one_http_attempt_and_preserves_the_previous_file(self):
+        from unittest.mock import patch
+        private = self.root / '비공개'
+        private.mkdir()
+        token = private / '구글_토큰.json'
+        original = json.dumps({'token': 'old-fake', 'refresh_token': 'r-fake',
+            'client_id': 'id-fake', 'client_secret': 's-fake',
+            'token_uri': 'https://oauth2.googleapis.com/token', 'expiry': '2020-01-01T00:00:00Z'}).encode()
+        for status in (400, 500):
+            with self.subTest(status=status):
+                token.write_bytes(original)
+                calls = []
+                def denied(**kwargs):
+                    calls.append(kwargs)
+                    return SimpleNamespace(status=status, headers={}, data=b'{"error":"invalid_grant","error_description":"not-for-public-display"}')
+                with patch('google_auth_httplib2.Request', return_value=denied), \
+                     patch('google_auth_oauthlib.flow.InstalledAppFlow.from_client_secrets_file', side_effect=AssertionError('자동 로그인 금지')):
+                    with self.assertRaises(ServiceError) as caught:
+                        GoogleCalendarAdapter(Settings(self.root, calendar_id='chosen'))._api()
+                self.assertEqual(caught.exception.code, 'google_auth_refresh')
+                self.assertNotIn('not-for-public-display', caught.exception.message)
+                self.assertEqual(len(calls), 1)
+                self.assertEqual(token.read_bytes(), original)
+                self.assertEqual(list(private.glob('*.갱신중_*')), [])
 
     def test_official_resource_freebusy_and_create_payload(self):
         from 일정도우미.규칙 import payload

@@ -31,9 +31,7 @@ if __name__ == "__main__":
     expected = sum(counts.values())
     if not expected or expected != len(test_ids) or len(test_ids) != len(set(test_ids)):
         raise SystemExit("시험 개수 또는 중복 식별자를 확인하세요.")
-    sources = sorted((IMPLEMENTATION / "일정도우미").glob("*.py"))
-    sources += sorted((IMPLEMENTATION / "테스트").glob("*.py"))
-    sources += [IMPLEMENTATION / "앱.py", Path(__file__).resolve()]
+    sources = sorted(IMPLEMENTATION.rglob("*.py"))
     before = {path.relative_to(ROOT).as_posix(): hashlib.sha256(path.read_bytes()).hexdigest() for path in sources}
     output = io.StringIO()
     result = unittest.TextTestRunner(stream=output, verbosity=2).run(suite)

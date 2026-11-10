@@ -1,0 +1,180 @@
+{
+  "checked_at": "2026-11-10T06:20:09.882078+00:00",
+  "actor": "실제 검토 조작·합성 시나리오·평가 기대값 작성자는 에이전트. 사용자 독립 판단·평가가 아닙니다.",
+  "scenario": "에이전트 작성 합성 공지 1건·후보 5개. 실제 공지/개인 일정 내용이 아닌 시험 자료.",
+  "model": "gpt-5.6-luna",
+  "calendar_target": "primary",
+  "initial_analysis_submissions": 1,
+  "model_request_reservations": 2,
+  "successful_model_operations": {
+    "extract": 1,
+    "rejudge": 1
+  },
+  "model_call_limit": 3,
+  "initial_routing": {
+    "automatic_created": 1,
+    "needs_review": 4
+  },
+  "final_status_counts": {
+    "created": 3,
+    "rejected": 2
+  },
+  "decision_record_counts": {
+    "approve": 2,
+    "reject": 2,
+    "rejudge": 1,
+    "edit_pending_review": 1
+  },
+  "jobs": [
+    {
+      "title": "[HITL검증] 모임 자동",
+      "final_status": "created",
+      "manual_edit": false,
+      "rejudge_count": 0,
+      "decision_actions": []
+    },
+    {
+      "title": "[HITL검증] 모임 승인검토",
+      "final_status": "created",
+      "manual_edit": false,
+      "rejudge_count": 0,
+      "decision_actions": [
+        "approve"
+      ]
+    },
+    {
+      "title": "[HITL검증] 시간 미정 반려검토",
+      "final_status": "rejected",
+      "manual_edit": false,
+      "rejudge_count": 0,
+      "decision_actions": [
+        "reject"
+      ]
+    },
+    {
+      "title": "[HITL검증] 시간 미정 재판정검토",
+      "final_status": "rejected",
+      "manual_edit": false,
+      "rejudge_count": 1,
+      "decision_actions": [
+        "rejudge",
+        "reject"
+      ]
+    },
+    {
+      "title": "[HITL검증] 시간 미정 수정검토",
+      "final_status": "created",
+      "manual_edit": true,
+      "rejudge_count": 0,
+      "decision_actions": [
+        "edit_pending_review",
+        "approve"
+      ]
+    }
+  ],
+  "calendar_verification": {
+    "created_content_readbacks": 3,
+    "rejected_ids_absent": 2,
+    "payloads": [
+      {
+        "title": "[HITL검증] 모임 자동",
+        "start": {
+          "dateTime": "2030-01-10T14:00:00+09:00",
+          "timeZone": "Asia/Seoul"
+        },
+        "end": {
+          "dateTime": "2030-01-10T15:00:00+09:00",
+          "timeZone": "Asia/Seoul"
+        },
+        "content_matches": true
+      },
+      {
+        "title": "[HITL검증] 모임 승인검토",
+        "start": {
+          "dateTime": "2030-01-10T14:00:00+09:00",
+          "timeZone": "Asia/Seoul"
+        },
+        "end": {
+          "dateTime": "2030-01-10T15:00:00+09:00",
+          "timeZone": "Asia/Seoul"
+        },
+        "content_matches": true
+      },
+      {
+        "title": "[HITL검증] 시간 미정 수정검토",
+        "start": {
+          "date": "2030-01-10"
+        },
+        "end": {
+          "date": "2030-01-11"
+        },
+        "content_matches": true
+      }
+    ]
+  },
+  "cleanup": {
+    "deleted_exact_owned_ids": 3,
+    "all_five_owned_ids_absent": true,
+    "remaining_test_events": 0,
+    "application_ledger_unchanged": true,
+    "completed_at": "2026-11-10T06:20:09.882078+00:00"
+  },
+  "restart": {
+    "real_server_restarted": true,
+    "pending_jobs_preserved": 4,
+    "job_versions_and_states_unchanged": true,
+    "ledger_counts_before_and_after": {
+      "jobs": 5,
+      "model_calls": 1,
+      "sends": 1
+    },
+    "evidence_kind": "실제 서버 재기동·업무 DB·정상 앱 브라우저 읽기 대조"
+  },
+  "limits": [
+    "모델 전송 예약은 앱 장부이며 제공자 청구/HTTP 패킷 수의 독립 감사가 아님. SDK 자동 재시도는 0.",
+    "네 결정 조작자는 에이전트이며 학습자가 직접 판단했다는 증거가 아님.",
+    "실제 모델 추출 1건·재판정 1건으로 일반 자연어 정확도를 보장하지 않음.",
+    "등록 확인 뒤 시험 생성물만 삭제했으므로 앱의 created 이력은 현재 Google 이벤트 존재를 뜻하지 않음.",
+    "기존 개인 이벤트 전체를 열람/비교하지 않았으며 삭제 요청은 본 시험 소유 ID만 대상으로 함."
+  ],
+  "verification_revisions": {
+    "live_model_and_create_phase": "CAL-03 오류 경계 보완 전의 실제 정상 모델/Google 검증. 당시 정상 경로는 성공했고 잘못된 외부 응답만 후속 보완함.",
+    "live_model_source_hashes": {
+      "02_구현/앱.py": "b2c718c57adad3a449f0571b86f8121787581d1e059100fe8787530d8bb24ac5",
+      "02_구현/일정도우미/모델연결.py": "ead4a6f5b8929ff9827aa28d561a7ab3c10b0ce39839dd4409da8d5bbdf35918",
+      "02_구현/일정도우미/캘린더연결.py": "88647f2defa9673297f243f15515cc1965a1541839d487d9561e14b7ef13b5b9",
+      "02_구현/일정도우미/서비스.py": "ead809b43ea47df7f0cf97c6b66dbd511d2849bc69e863adf03ccebbb47ff89b",
+      "02_구현/일정도우미/규칙.py": "01a002fe6a24d5c955355ac583a89ee707ef8fc06a518849119f3b11ce9538fc",
+      "02_구현/일정도우미/그래프.py": "32b409eb69341a48f892e926ea93872dd7ad8c13823f84561f03c32e4f8d5e3d",
+      "02_구현/일정도우미/저장소.py": "f843a63acd61754a37f31825ccd17d919e72e6029d53554a1b2464d7bf85e80d",
+      "02_구현/일정도우미/설정.py": "7c5565773d286cd63cc7a0cc7eb64932466dd06581f75bd670409892829b3068",
+      "02_구현/일정도우미/형식.py": "db196e0c1ae8cc49478a7a32e6f5dcb6e234923737b847f4e8dd11e71fefaa94",
+      "02_구현/테스트실행.py": "c1335762b03a9cb754c155ea871cafb337bae6b5e4a0d12e2eb1096f0a081714",
+      "02_구현/평가실행.py": "f3067d83cc588d0512528cbea4d80b2819e961f58d94054d72e799f45b3a73bd"
+    },
+    "final_source_verified_by": [
+      "76개 최종 회귀",
+      "실제 저장 후보 5개 내용의 SDK 대역 봉투 재생",
+      "malformed SDK→서비스→실제 Streamlit 소비자 검사",
+      "정상 서비스 캐시 재조립 후 실제 브라우저 재확인",
+      "보완 후 실제 Google freeBusy 읽기"
+    ],
+    "fresh_model_or_calendar_create_after_fix": false,
+    "original_raw_provider_response_saved": false,
+    "sdk_replay_wrapper_is_synthetic": true,
+    "post_fix_google_read": {
+      "passed": true,
+      "calendar_writes": 0,
+      "model_requests": 0,
+      "browser_login_started": false,
+      "freebusy_response_validated": true,
+      "ledger_unchanged": true,
+      "counts": {
+        "jobs": 5,
+        "model_calls": 2,
+        "sends": 3
+      },
+      "calendar_source_sha256": "743b92ea3a8f7342aeeb78d2749fc9aa2f2548d7592d38ccd03bf39eb9063985"
+    }
+  }
+}

@@ -89,6 +89,73 @@ class ConsumerIntegrationTests(backend_harness.OfflineCase):
         self.assertEqual(len(jobs), 1)
         return jobs[0]
 
+    def sdk_output(self, output):
+        import json
+        import httpx2
+        from 일정도우미.모델연결 import make_client
+        calls = []
+        def response(request):
+            calls.append(request)
+            return httpx2.Response(200, json={'id': 'resp_fake', 'object': 'response', 'created_at': 0,
+                'model': 'gpt-5.6-luna', 'status': 'completed', 'output': output})
+        client = make_client('integration-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(response), trust_env=False))
+        self.service.model.client = client
+        self.addCleanup(client.close)
+        return calls
+
+    def test_null_sdk_extract_is_public_error_without_jobs_or_calendar_writes(self):
+        calls = self.sdk_output(None)
+        app = self.app()
+        app.text_area(key="notice_text").input(SOURCE)
+        app.button(key="analyse_notice").click().run()
+        self.assertFalse(app.exception, str(app.exception))
+        self.assertTrue(any("모델 출력의 형식" in item.value for item in app.error))
+        self.assertEqual(self.service.list_jobs(), [])
+        self.assertEqual(self.service.store.calls_used(), 1)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.calendar.writes, [])
+
+    def test_null_sdk_rejudge_records_failure_and_preserves_the_review_pause(self):
+        self.calendar.intervals = [{"start": "2026-11-10T14:30:00+09:00", "end": "2026-11-10T15:00:00+09:00"}]
+        app = self.app()
+        job = self.submit(app)
+        calls = self.sdk_output([{'type': 'message', 'id': 'msg_fake', 'role': 'assistant',
+                                 'status': 'completed', 'content': None}])
+        suffix = job['id'] + '_' + str(job['version'])
+        instruction = '원문 근거로 이 후보만 다시 확인하세요.'
+        app.text_area(key='rejudge_instruction_' + suffix).input(instruction)
+        app.button(key='rejudge_' + job['id']).click().run()
+        self.assertFalse(app.exception, str(app.exception))
+        self.assertTrue(any('모델 출력의 형식' in item.value for item in app.error))
+        actual = self.service.get_job(job['id'])
+        self.assertEqual(actual['status'], 'needs_review')
+        self.assertEqual(actual['rejudge_count'], 1)
+        self.assertEqual(actual['last_error']['code'], 'rejudge_failed')
+        self.assertGreater(actual['version'], job['version'])
+        self.assertEqual(app.text_area(key='rejudge_instruction_' + suffix).value, instruction)
+        self.assertTrue(self.service.graph.get_state({'configurable': {'thread_id': job['id']}}).interrupts)
+        self.assertEqual(self.service.store.calls_used(), 2)
+        self.assertEqual(len(calls), 1)
+        self.assertEqual(self.calendar.writes, [])
+
+    def test_malformed_google_preflight_is_visible_before_any_model_reservation(self):
+        from googleapiclient.discovery import build
+        from 테스트.테스트_백엔드_연결 import HttpTransport
+        from 일정도우미.캘린더연결 import GoogleCalendarAdapter
+        http = HttpTransport([{'calendars': {'test-calendar': None}}])
+        api = build('calendar', 'v3', http=http, static_discovery=True, cache_discovery=False, num_retries=0)
+        self.service.calendar = GoogleCalendarAdapter(self.service.settings, api=api)
+        app = self.app()
+        app.text_area(key='notice_text').input(SOURCE)
+        app.button(key='analyse_notice').click().run()
+        self.assertFalse(app.exception, str(app.exception))
+        self.assertTrue(any('가용 시간 전체' in item.value for item in app.error))
+        self.assertEqual(self.service.store.calls_used(), 0)
+        self.assertEqual(self.service.list_jobs(), [])
+        self.assertEqual(self.responses.calls, [])
+        self.assertEqual(len(http.calls), 1)
+        self.assertTrue(all('/freeBusy' in call['uri'] for call in http.calls))
+
     def test_real_graph_review_edit_and_readback_through_the_screen(self):
         self.calendar.intervals = [{"start": "2026-11-10T14:30:00+09:00", "end": "2026-11-10T15:00:00+09:00"}]
         app = self.app()

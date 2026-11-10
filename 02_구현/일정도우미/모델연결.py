@@ -40,17 +40,43 @@ class OpenAIAdapter:
                 text={'format': {'type': 'json_schema', 'name': kind, 'strict': True, 'schema': schema_type.model_json_schema()}},
                 reasoning={'effort': 'none'}, store=False, service_tier='default', tools=[],
                 max_output_tokens=self.settings.max_output_tokens, timeout=30.0)
-        except Exception:
+        except Exception as error:
+            status = getattr(error, 'status_code', None)
+            if type(status) is int and 400 <= status <= 599:
+                # 원시 message/body는 인증값을 포함할 수 있어 정해 둔 코드·필드만 표시합니다.
+                details = ['HTTP ' + str(status)]
+                code = getattr(error, 'code', None)
+                parameter = getattr(error, 'param', None)
+                if isinstance(code, str) and code in {'model_not_found', 'invalid_api_key', 'insufficient_quota', 'rate_limit_exceeded',
+                            'invalid_request_error', 'unsupported_parameter', 'unsupported_value',
+                            'invalid_json_schema', 'context_length_exceeded'}:
+                    details.append(code)
+                if isinstance(parameter, str) and parameter in {'model', 'reasoning', 'reasoning.effort', 'text', 'text.format',
+                                 'text.format.schema', 'max_output_tokens', 'input', 'service_tier', 'store'}:
+                    details.append('항목=' + parameter)
+                raise ServiceError('model_transport', '모델 요청을 완료하지 못했습니다 (' + ', '.join(details) + '). 이번 시도는 예산을 소비했습니다. 모델·인증·요청 설정을 확인하세요.') from None
             raise ServiceError('model_transport', '모델 요청 결과를 받지 못했습니다. 이번 시도는 예산을 소비했습니다. 연결과 상한을 확인하세요.') from None
         if getattr(response, 'status', None) != 'completed':
             raise ServiceError('model_incomplete', '모델 응답이 완료되지 않았습니다. 입력 길이와 출력 상한을 확인하세요.')
-        for output in getattr(response, 'output', []):
-            for part in getattr(output, 'content', []):
-                if getattr(part, 'type', '') == 'refusal':
-                    raise ServiceError('model_refusal', '모델이 요청을 거절했습니다. 공지 내용을 확인하세요.')
         try:
-            return schema_type.model_validate_json(response.output_text).model_dump()
-        except (ValidationError, ValueError, AttributeError):
+            outputs = response.output
+            if not isinstance(outputs, list):
+                raise ValueError()
+            for output in outputs:
+                # reasoning 항목의 선택적 content는 텍스트 메시지와 다른 계약입니다.
+                if getattr(output, 'type', '') != 'message':
+                    continue
+                parts = output.content
+                if not isinstance(parts, list):
+                    raise ValueError()
+                for part in parts:
+                    if getattr(part, 'type', '') == 'refusal':
+                        raise ServiceError('model_refusal', '모델이 요청을 거절했습니다. 공지 내용을 확인하세요.')
+            text = response.output_text
+            if not isinstance(text, str):
+                raise ValueError()
+            return schema_type.model_validate_json(text).model_dump()
+        except (ValidationError, ValueError, AttributeError, TypeError):
             raise ServiceError('model_output', '모델 출력의 형식·후보 수를 검증하지 못했습니다. 자동 등록하지 않았습니다.') from None
 
     def extract(self, text, reference_date):

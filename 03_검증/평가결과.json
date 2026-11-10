@@ -1,0 +1,33 @@
+{
+  "case_count": 5,
+  "strategies": {
+    "a_only": {
+      "intervention_rate": 0.6,
+      "misses": 1,
+      "false_stops": 0
+    },
+    "b_only": {
+      "intervention_rate": 0.2,
+      "misses": 3,
+      "false_stops": 0
+    },
+    "a_or_b": {
+      "intervention_rate": 0.8,
+      "misses": 0,
+      "false_stops": 0
+    },
+    "all_review": {
+      "intervention_rate": 1.0,
+      "misses": 0,
+      "false_stops": 1
+    }
+  },
+  "evaluation_kind": "같은 고정 사실에 대한 검토 분류 기준 비교. 실제 안전 가드를 끄거나 추가 등록하지 않음.",
+  "gold_author": "에이전트의 합성 시나리오 기대값. 학습자 독립 라벨·검토 완료로 주장하지 않음.",
+  "limitations": [
+    "5건의 작은 합성 표본이며 일반 업무 정확도를 뜻하지 않음.",
+    "정답은 모델의 자기평가가 아니라 시나리오의 명시 일시/누락·본 시험 자동 등록과의 충돌에 따른 기대값.",
+    "동일한 고정 사실에 A/B 기준을 적용하는 분류 비교이며 실제 안전 가드를 끄거나 재등록하지 않음.",
+    "기준/프롬프트를 반복 조정한 미공개 평가나 독립 사용자 연구가 아님."
+  ]
+}

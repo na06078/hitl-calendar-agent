@@ -1,0 +1,141 @@
+{
+  "dataset_version": 1,
+  "source_kind": "에이전트 작성 합성 공지 1건의 실제 모델 추출 5후보와 최초 코드 판정",
+  "source_text": "[HITL검증] 합성 공지입니다. 다음 다섯 항목은 서로 다른 일정입니다.\n1. [HITL검증] 모임 자동: 2030년 1월 10일 14:00~15:00, 장소 온라인.\n2. [HITL검증] 모임 승인검토: 2030년 1월 10일 14:00~15:00, 장소 온라인.\n3. [HITL검증] 시간 미정 수정검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인.\n4. [HITL검증] 시간 미정 반려검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인.\n5. [HITL검증] 시간 미정 재판정검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인.",
+  "reference_date": "2026-11-10",
+  "requested_model": "gpt-5.6-luna",
+  "gold_author": "에이전트의 합성 시나리오 기대값. 학습자 독립 라벨·검토 완료로 주장하지 않음.",
+  "cases": [
+    {
+      "id": "clear",
+      "title": "[HITL검증] 모임 자동",
+      "needs_review": false,
+      "ambiguity": false,
+      "conflict": false,
+      "observed_risk_codes": [],
+      "extracted_draft": {
+        "title": "[HITL검증] 모임 자동",
+        "start_date": "2030-01-10",
+        "end_date": "2030-01-10",
+        "start_time": "14:00",
+        "end_time": "15:00",
+        "all_day": false,
+        "location": "온라인",
+        "evidence": [
+          "[HITL검증] 모임 자동: 2030년 1월 10일 14:00~15:00, 장소 온라인."
+        ],
+        "ambiguities": []
+      }
+    },
+    {
+      "id": "overlap",
+      "title": "[HITL검증] 모임 승인검토",
+      "needs_review": true,
+      "ambiguity": false,
+      "conflict": true,
+      "observed_risk_codes": [
+        "busy_overlap"
+      ],
+      "extracted_draft": {
+        "title": "[HITL검증] 모임 승인검토",
+        "start_date": "2030-01-10",
+        "end_date": "2030-01-10",
+        "start_time": "14:00",
+        "end_time": "15:00",
+        "all_day": false,
+        "location": "온라인",
+        "evidence": [
+          "[HITL검증] 모임 승인검토: 2030년 1월 10일 14:00~15:00, 장소 온라인."
+        ],
+        "ambiguities": []
+      }
+    },
+    {
+      "id": "missing_edit",
+      "title": "[HITL검증] 시간 미정 수정검토",
+      "needs_review": true,
+      "ambiguity": true,
+      "conflict": false,
+      "observed_risk_codes": [
+        "invalid_datetime",
+        "ambiguity",
+        "unsupported_grounding"
+      ],
+      "extracted_draft": {
+        "title": "[HITL검증] 시간 미정 수정검토",
+        "start_date": "2030-01-10",
+        "end_date": "2030-01-10",
+        "start_time": null,
+        "end_time": null,
+        "all_day": false,
+        "location": "온라인",
+        "evidence": [
+          "[HITL검증] 시간 미정 수정검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인."
+        ],
+        "ambiguities": [
+          "시작과 종료 시각이 미정"
+        ]
+      }
+    },
+    {
+      "id": "missing_reject",
+      "title": "[HITL검증] 시간 미정 반려검토",
+      "needs_review": true,
+      "ambiguity": true,
+      "conflict": false,
+      "observed_risk_codes": [
+        "invalid_datetime",
+        "ambiguity",
+        "unsupported_grounding"
+      ],
+      "extracted_draft": {
+        "title": "[HITL검증] 시간 미정 반려검토",
+        "start_date": "2030-01-10",
+        "end_date": "2030-01-10",
+        "start_time": null,
+        "end_time": null,
+        "all_day": false,
+        "location": "온라인",
+        "evidence": [
+          "[HITL검증] 시간 미정 반려검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인."
+        ],
+        "ambiguities": [
+          "시작과 종료 시각이 미정"
+        ]
+      }
+    },
+    {
+      "id": "missing_rejudge",
+      "title": "[HITL검증] 시간 미정 재판정검토",
+      "needs_review": true,
+      "ambiguity": true,
+      "conflict": false,
+      "observed_risk_codes": [
+        "invalid_datetime",
+        "ambiguity",
+        "unsupported_grounding"
+      ],
+      "extracted_draft": {
+        "title": "[HITL검증] 시간 미정 재판정검토",
+        "start_date": "2030-01-10",
+        "end_date": "2030-01-10",
+        "start_time": null,
+        "end_time": null,
+        "all_day": false,
+        "location": "온라인",
+        "evidence": [
+          "[HITL검증] 시간 미정 재판정검토: 2030년 1월 10일, 시작과 종료 시각은 아직 미정, 장소 온라인."
+        ],
+        "ambiguities": [
+          "시작과 종료 시각이 미정"
+        ]
+      }
+    }
+  ],
+  "limitations": [
+    "5건의 작은 합성 표본이며 일반 업무 정확도를 뜻하지 않음.",
+    "정답은 모델의 자기평가가 아니라 시나리오의 명시 일시/누락·본 시험 자동 등록과의 충돌에 따른 기대값.",
+    "동일한 고정 사실에 A/B 기준을 적용하는 분류 비교이며 실제 안전 가드를 끄거나 재등록하지 않음.",
+    "기준/프롬프트를 반복 조정한 미공개 평가나 독립 사용자 연구가 아님."
+  ]
+}
