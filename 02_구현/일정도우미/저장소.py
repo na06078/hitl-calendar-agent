@@ -41,8 +41,20 @@ class Store:
             self.conn.execute('UPDATE sends SET state=? WHERE job_id=?', (job['status'], job['id']))
             self.conn.execute('UPDATE jobs SET body=? WHERE id=?', (json.dumps(job, ensure_ascii=False), job['id']))
 
-    def save_job(self, job):
+    def save_job(self, job, expected_version=None):
         with self.lock, self.conn:
+            if expected_version is not None:
+                row = self.conn.execute('SELECT body FROM jobs WHERE id=?', (job['id'],)).fetchone()
+                if (type(expected_version) is not int or row is None
+                        or json.loads(row[0])['version'] != expected_version
+                        or job['version'] != expected_version + 1):
+                    raise ServiceError('stale_version', '저장된 작업 버전이 바뀌었습니다. 최신 내용을 다시 확인하세요.')
+                # 다른 연결의 변경도 원본 본문 비교로 보호합니다. 이 경로에서는 새 행을 만들지 않습니다.
+                changed = self.conn.execute('UPDATE jobs SET body=? WHERE id=? AND body=?',
+                    (json.dumps(job, ensure_ascii=False), job['id'], row[0]))
+                if changed.rowcount != 1:
+                    raise ServiceError('stale_version', '작업이 변경되어 저장하지 않았습니다. 최신 내용을 확인하세요.')
+                return
             self.conn.execute('INSERT OR REPLACE INTO jobs(id,body) VALUES (?,?)', (job['id'], json.dumps(job, ensure_ascii=False)))
 
     def add_jobs(self, jobs):

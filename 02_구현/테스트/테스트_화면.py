@@ -201,6 +201,17 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(self.service.operations, [])
 
 
+    def test_date_backfill_is_explained_without_creating_or_rejudging(self):
+        job = synthetic_job()
+        job['reference_date'] = '2026-11-10'
+        job['draft'].update(start_date='2026-11-11',end_date='2026-11-11',end_time=None)
+        job['decisions'] = [{'action':'relative_date_normalized'}]
+        self.service.jobs[job['id']] = job
+        app = self.app()
+        self.assertTrue(any('기준 날짜로 날짜를 보완했습니다' in item.value for item in app.caption))
+        self.assertTrue(any('2026-11-11' in item.value and '시간 미정' in item.value for item in app.info))
+        self.assertEqual(self.service.operations, [])
+
     def test_approve_sends_the_reviewed_version_once(self):
         job = synthetic_job()
         self.service.jobs[job["id"]] = job

@@ -94,6 +94,87 @@ class ServiceTests(OfflineCase):
         self.assertEqual(self.responses.calls, [])
         self.assertEqual(self.calendar.writes, [])
 
+    def test_legacy_pending_relative_date_is_backfilled_without_execution(self):
+        from unittest.mock import patch
+        source = '수업은 내일 14:00부터 시작합니다.'
+        value = draft(start_date=None,end_date=None,end_time=None,
+                      evidence=['내일 14:00부터 시작합니다.'],ambiguities=['날짜 확인 필요','종료 시각 없음'])
+        self.responses.results.append({'events':[value]})
+        job = self.service.analyse(source,'2026-11-10')[0]
+        self.assertEqual(job['status'],'needs_review')
+        # 구버전 저장 결과를 같은 격리 작업/중단점에 재현합니다.
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        self.service.store.save_job(legacy)
+        before = self.service.get_job(job['id'])
+        with patch.object(self.calendar,'busy',side_effect=AssertionError('날짜 보완 중 Calendar 조회 금지')), \
+             patch.object(self.calendar,'create',side_effect=AssertionError('날짜 보완 중 등록 금지')), \
+             patch.object(self.service.model,'rejudge',side_effect=AssertionError('날짜 보완 중 모델 금지')):
+            actual = self.service.resolve_pending_date(job['id'],before['version'])
+        self.assertEqual(actual['draft']['start_date'],'2026-11-11')
+        self.assertEqual(actual['draft']['end_date'],'2026-11-11')
+        self.assertIsNone(actual['draft']['end_time'])
+        self.assertEqual(actual['status'],'needs_review')
+        self.assertEqual(actual['version'],before['version']+1)
+        for key in ['title','start_time','end_time','location','evidence','ambiguities']:
+            self.assertEqual(actual['draft'][key],before['draft'][key])
+        self.assertEqual(actual['source_text'],source)
+        self.assertEqual(actual['decisions'][-1]['action'],'relative_date_normalized')
+        self.assertEqual(actual['decisions'][-1]['previous_dates'],{'start_date':None,'end_date':None})
+        self.assertTrue(self.service.graph.get_state({'configurable':{'thread_id':job['id']}}).interrupts)
+        self.assertEqual(self.service.store.calls_used(),1)
+        self.assertEqual(len(self.responses.calls),1)
+        self.assertEqual(self.calendar.writes,[])
+        self.assertEqual(self.service.resolve_pending_date(job['id'],actual['version']),actual)
+        with self.assertRaises(ServiceError) as error:
+            self.service.resolve_pending_date(job['id'],before['version'])
+        self.assertEqual(error.exception.code,'stale_version')
+        self.assertEqual(self.service.get_job(job['id']),actual)
+
+    def test_clear_relative_dates_are_completed_before_automatic_execution(self):
+        source = '내일 14:00~15:00 수업'
+        value = draft(start_date=None,end_date=None,evidence=[source])
+        self.responses.results.append({'events':[value]})
+        job = self.service.analyse(source,'2026-11-10')[0]
+        self.assertEqual(job['draft']['start_date'],'2026-11-11')
+        self.assertEqual(job['draft']['end_date'],'2026-11-11')
+        self.assertEqual(job['status'],'created')
+        self.assertEqual(self.calendar.writes[0]['start']['dateTime'],'2026-11-11T14:00:00+09:00')
+        self.assertEqual(self.calendar.writes[0]['end']['dateTime'],'2026-11-11T15:00:00+09:00')
+        self.assertEqual(len(self.responses.calls),1)
+
+    def test_legacy_from_date_backfills_start_only_and_retains_the_same_pause(self):
+        from unittest.mock import patch
+        source = '내일부터 14:00에 수업을 시작합니다.'
+        value = draft(start_date=None,end_date=None,end_time=None,evidence=[source])
+        self.responses.results.append({'events':[value]})
+        job = self.service.analyse(source,'2026-11-10')[0]
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        self.service.store.save_job(legacy)
+        with patch.object(self.calendar,'busy',side_effect=AssertionError('날짜 보완에 Calendar 조회 금지')), \
+             patch.object(self.calendar,'create',side_effect=AssertionError('날짜 보완에 등록 금지')):
+            revised = self.service.resolve_pending_date(job['id'],job['version'])
+        self.assertEqual(revised['draft']['start_date'],'2026-11-11')
+        self.assertIsNone(revised['draft']['end_date'])
+        self.assertIsNone(revised['draft']['end_time'])
+        self.assertEqual(revised['status'],'needs_review')
+        self.assertEqual(revised['decisions'][-1]['previous_dates'],{'start_date':None,'end_date':None})
+        self.assertEqual(revised['decisions'][-1]['resolved_dates'],{'start_date':'2026-11-11','end_date':None})
+        self.assertTrue(self.service.graph.get_state({'configurable':{'thread_id':job['id']}}).interrupts)
+        self.assertEqual(len(self.responses.calls),1)
+        self.assertEqual(self.calendar.writes,[])
+
+    def test_date_backfill_rejects_completed_jobs_without_changing_them(self):
+        job = self.analyse(draft())
+        before = self.service.get_job(job['id'])
+        with self.assertRaises(ServiceError) as error:
+            self.service.resolve_pending_date(job['id'],job['version'])
+        self.assertEqual(error.exception.code,'invalid_state')
+        self.assertEqual(self.service.get_job(job['id']),before)
+        self.assertEqual(len(self.calendar.writes),1)
+        self.assertEqual(len(self.responses.calls),1)
+
     def test_automatic_creation_readback_and_no_duplicate_after_reload(self):
         job = self.analyse(draft())
         self.assertEqual(job['status'], 'created')

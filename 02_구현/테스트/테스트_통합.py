@@ -125,6 +125,45 @@ class ConsumerIntegrationTests(backend_harness.OfflineCase):
         self.assertEqual(len(self.responses.calls), 1)
         self.assertEqual(self.service.store.calls_used(), 4)
 
+    def test_relative_notice_date_is_completed_through_the_real_screen_service_path(self):
+        source = '내일 14:00~15:00 수업'
+        value = deepcopy(DRAFT)
+        value.update(start_date=None,end_date=None,evidence=[source])
+        self.responses.results.append({'events':[value]})
+        app = self.app()
+        app.text_area(key='notice_text').input(source)
+        app.date_input(key='notice_reference_date').set_value(date(2026,11,10))
+        app.button(key='analyse_notice').click().run()
+        self.assertFalse(app.exception,str(app.exception))
+        actual = self.service.list_jobs()[0]
+        self.assertEqual(actual['draft']['start_date'],'2026-11-11')
+        self.assertEqual(actual['draft']['end_date'],'2026-11-11')
+        self.assertEqual(actual['status'],'created')
+        self.assertEqual(self.calendar.writes[0]['start']['dateTime'],'2026-11-11T14:00:00+09:00')
+        self.assertEqual(len(self.responses.calls),1)
+
+    def test_legacy_from_date_correction_is_visible_after_the_version_reload(self):
+        source = '내일부터 14:00에 수업을 시작합니다.'
+        value = deepcopy(DRAFT)
+        value.update(start_date=None,end_date=None,end_time=None,evidence=[source])
+        self.responses.results.append({'events':[value]})
+        job = self.service.analyse(source,'2026-11-10')[0]
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        self.service.store.save_job(legacy)
+        app = self.app()
+        revised = self.service.resolve_pending_date(job['id'],job['version'])
+        app.run()
+        self.assertTrue(app.button(key='approve_'+job['id']).disabled)
+        app.button(key='reload_'+job['id']).click().run()
+        self.assertFalse(app.exception,str(app.exception))
+        self.assertTrue(any('2026-11-11' in item.value and '시간 미정' in item.value for item in app.info))
+        self.assertTrue(any('기준 날짜로 날짜를 보완했습니다' in item.value for item in app.caption))
+        self.assertEqual(revised['status'],'needs_review')
+        self.assertIsNone(revised['draft']['end_date'])
+        self.assertEqual(len(self.responses.calls),1)
+        self.assertEqual(self.calendar.writes,[])
+
     def test_null_sdk_extract_is_public_error_without_jobs_or_calendar_writes(self):
         calls = self.sdk_output(None)
         app = self.app()

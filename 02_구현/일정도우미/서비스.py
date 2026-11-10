@@ -15,7 +15,7 @@ from .저장소 import Store, now
 from .모델연결 import OpenAIAdapter
 from .캘린더연결 import GoogleCalendarAdapter
 from .그래프 import build_graph
-from .규칙 import risks, interval, overlaps, payload, matches, canonical_hash
+from .규칙 import risks, interval, overlaps, payload, matches, canonical_hash, resolve_relative_dates
 
 VIEW_FIELDS = ('id', 'title', 'status', 'version', 'source_text', 'reference_date', 'draft', 'risk_reasons',
                'busy_intervals', 'last_error', 'decisions', 'google_event_id', 'google_event_url',
@@ -59,12 +59,15 @@ class CalendarAgentService:
         if self.closed:
             raise ServiceError('service_closed', '종료된 서비스입니다. 앱을 다시 여세요.')
 
-    def _save(self, job, bump=False):
+    def _save(self, job, bump=False, expected_version=None):
         if bump:
             job['version'] += 1
         job['title'] = job['draft']['title']
         job['updated_at'] = now()
-        self.store.save_job(job)
+        if expected_version is None:
+            self.store.save_job(job)
+        else:
+            self.store.save_job(job, expected_version=expected_version)
 
     def _view(self, job):
         return copy.deepcopy({key: job[key] for key in VIEW_FIELDS})
@@ -140,9 +143,37 @@ class CalendarAgentService:
             self._open()
             return self._view(self.store.get_job(job_id))
 
+    def resolve_pending_date(self, job_id: str, expected_version: int) -> dict:
+        with self.lock:
+            self._open()
+            job = self._checked_job(job_id, expected_version)
+            if job['status'] != 'needs_review' or job['manual'] or self.store.send_record(job_id) is not None:
+                raise ServiceError('invalid_state', '전송되지 않은 원문 추출 대기 건에서만 누락 날짜를 보완할 수 있습니다.')
+            config = {'configurable': {'thread_id': job_id}}
+            if not self.graph.get_state(config).interrupts:
+                raise ServiceError('graph_not_paused', '검토 중단점을 확인한 뒤 날짜를 보완하세요.')
+            revised = resolve_relative_dates(job['draft'], job['source_text'], job['reference_date'])
+            if revised == job['draft']:
+                return self._view(job)
+            previous = {key: job['draft'][key] for key in ('start_date','end_date')}
+            job['draft'] = revised
+            job['approved_hash'], job['approved_busy'], job['busy_intervals'] = None, [], []
+            job['risk_reasons'] = risks(revised, job['source_text'], self.settings.timezone,
+                                        reference_date=job['reference_date'])
+            job['risk_reasons'].append({'code':'relative_date_normalized',
+                'message':'공지 기준 날짜로 날짜를 보완했습니다. 남은 정보와 원문을 확인한 뒤 결정하세요.'})
+            job['decisions'].append({'action':'relative_date_normalized','reference_date':job['reference_date'],
+                'previous_dates':previous,'resolved_dates':{key:revised[key] for key in previous},'at':now()})
+            # 이 경로는 날짜만 정정하고 멈춘 그래프를 실행하지 않습니다. 사용자 승인도 새로 필요합니다.
+            self._save(job, bump=True, expected_version=expected_version)
+            return self._view(job)
+
     def _assess(self, job_id):
         job = self.store.get_job(job_id)
-        job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, job['manual'])
+        if not job['manual']:
+            job['draft'] = resolve_relative_dates(job['draft'], job['source_text'], job['reference_date'])
+        job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, job['manual'],
+                                    reference_date=job['reference_date'])
         job['busy_intervals'] = []
         if not any(x['code'] == 'invalid_datetime' for x in job['risk_reasons']):
             try:
@@ -202,7 +233,8 @@ class CalendarAgentService:
                         job['decisions'].append(dict(action='edit_pending_review', edits=copy.deepcopy(edits), previous_draft=job['draft'], at=now()))
                         job['draft'], job['manual'] = candidate, True
                     job['busy_intervals'] = busy
-                    job['risk_reasons'] = risks(candidate, job['source_text'], self.settings.timezone, job['manual'])
+                    job['risk_reasons'] = risks(candidate, job['source_text'], self.settings.timezone, job['manual'],
+                                                reference_date=job['reference_date'])
                     job['risk_reasons'].append({'code': 'new_conflict', 'message': '새 충돌이 생겼습니다. 최신 구간을 확인하고 다시 결정하세요.'})
                     self._save(job, bump=True)
                     return self.get_job(job_id)
@@ -242,7 +274,8 @@ class CalendarAgentService:
                        rejudge_count=decision['rejudge_count'], last_error=None)
         if decision['action'] == 'edit_approve':
             job['draft'], job['manual'] = decision['draft'], True
-            job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, True)
+            job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, True,
+                                        reference_date=job['reference_date'])
         if decision['action'] in ('approve', 'edit_approve'):
             job['approved_hash'] = decision['approved_hash']
             job['approved_busy'] = decision['approved_busy']

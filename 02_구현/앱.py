@@ -116,6 +116,9 @@ def show_candidate(job):
     st.text_area("공지 원문", value=job["source_text"], key="source_" + job["id"],
                  height=100, disabled=True)
     st.caption("공지 기준 날짜: " + job["reference_date"])
+    date_backfilled = bool(job.get("decisions")) and job["decisions"][-1].get("action") == "relative_date_normalized"
+    if date_backfilled:
+        st.caption("공지 기준 날짜로 날짜를 보완했습니다. 시간 등 남은 정보는 확인한 뒤 결정해 주세요.")
     for risk in job.get("risk_reasons", []):
         st.warning(risk["message"])
     if draft.get("all_day"):
@@ -131,6 +134,8 @@ def show_candidate(job):
             for busy in job["busy_intervals"]:
                 st.write(f"{busy['start']} ~ {busy['end']}")
     with st.expander("AI 추출 근거"):
+        if date_backfilled:
+            st.caption("아래 모호함은 날짜 보완 전의 모델 응답 기록입니다. 현재 날짜는 위 일정 정보에 표시됩니다.")
         for quote in draft.get("evidence", []):
             st.text(quote)
         for ambiguity in draft.get("ambiguities", []):

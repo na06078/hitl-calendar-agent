@@ -80,6 +80,24 @@ class ModelTests(OfflineCase):
         self.assertEqual(len(calls), 1)
 
 class StoreTests(OfflineCase):
+    def test_version_checked_save_preserves_newer_job_contents(self):
+        from 일정도우미.저장소 import Store
+        from 일정도우미.형식 import ServiceError
+        store = Store(self.root / '버전보호.sqlite')
+        self.addCleanup(store.close)
+        original = {'id': 'versioned-job', 'version': 1, 'value': 'original'}
+        store.save_job(original)
+        revised = {**original, 'version': 2, 'value': 'date-resolved'}
+        store.save_job(revised, expected_version=1)
+        caught = None
+        try:
+            store.save_job({**original, 'version': 2, 'value': 'stale-overwrite'}, expected_version=1)
+        except Exception as error:
+            caught = error
+        self.assertIsInstance(caught, ServiceError)
+        self.assertEqual(caught.code, 'stale_version')
+        self.assertEqual(store.get_job(original['id']), revised)
+
     def test_unlimited_calls_keep_the_existing_ledger_and_survive_reopen(self):
         from 일정도우미.저장소 import Store
         from 일정도우미.형식 import ServiceError

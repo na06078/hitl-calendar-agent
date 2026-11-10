@@ -23,6 +23,36 @@ class HttpTransport:
         pass
 
 class OpenAITransportTests(OfflineCase):
+    def test_extract_and_rejudge_send_explicit_relative_date_instructions(self):
+        import httpx2
+        from 일정도우미.저장소 import Store
+        from 일정도우미.모델연결 import OpenAIAdapter, make_client
+        calls = []
+        candidate = draft(start_date='2026-11-11', end_date='2026-11-11', evidence=['내일 14:00~15:00 수업'])
+        def response(request):
+            data = json.loads(request.content)
+            calls.append(data)
+            value = {'events': [candidate]} if data['text']['format']['name']=='extract' else candidate
+            return httpx2.Response(200, json={'id':'resp_fake','object':'response','created_at':0,
+                'model':'gpt-5.6-luna','status':'completed','output':[{'type':'message','id':'msg_fake',
+                'role':'assistant','status':'completed','content':[{'type':'output_text','text':json.dumps(value,ensure_ascii=False),'annotations':[]}]}]})
+        client = make_client('project-fake', http_client=httpx2.Client(transport=httpx2.MockTransport(response), trust_env=False))
+        self.addCleanup(client.close)
+        store = Store(self.root / '상대날짜지시.sqlite')
+        self.addCleanup(store.close)
+        adapter = OpenAIAdapter(Settings(self.root,api_key='project-fake',llm_call_limit=2),store,client)
+        adapter.extract('내일 14:00~15:00 수업','2026-11-10')
+        adapter.rejudge('내일 14:00~15:00 수업','2026-11-10',candidate,'기준일로 확인하세요.',job_id='relative-case')
+        self.assertEqual(len(calls),2)
+        for data in calls:
+            self.assertEqual(json.loads(data['input'])['reference_date'],'2026-11-10')
+            self.assertEqual(json.loads(data['input'])['timezone'],'Asia/Seoul')
+            self.assertIn('오늘·내일·모레',data['instructions'])
+            self.assertIn('reference_date',data['instructions'])
+            self.assertIn('0·1·2일',data['instructions'])
+            self.assertIn('시작 날짜만',data['instructions'])
+        self.assertEqual(store.calls_used(),2)
+
     def test_saved_synthetic_candidates_replay_through_the_installed_sdk(self):
         import httpx2
         from pathlib import Path
