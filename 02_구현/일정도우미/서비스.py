@@ -15,7 +15,7 @@ from .저장소 import Store, now
 from .모델연결 import OpenAIAdapter
 from .캘린더연결 import GoogleCalendarAdapter
 from .그래프 import build_graph
-from .규칙 import risks, interval, overlaps, payload, matches, canonical_hash, resolve_relative_dates
+from .규칙 import risks, interval, overlaps, payload, matches, canonical_hash, resolve_relative_dates, complete_end_defaults
 
 VIEW_FIELDS = ('id', 'title', 'status', 'version', 'source_text', 'reference_date', 'draft', 'risk_reasons',
                'busy_intervals', 'last_error', 'decisions', 'google_event_id', 'google_event_url',
@@ -168,10 +168,38 @@ class CalendarAgentService:
             self._save(job, bump=True, expected_version=expected_version)
             return self._view(job)
 
+    def resolve_pending_end(self, job_id: str, expected_version: int) -> dict:
+        with self.lock:
+            self._open()
+            job = self._checked_job(job_id,expected_version)
+            if job['status'] != 'needs_review' or self.store.send_record(job_id) is not None:
+                raise ServiceError('invalid_state','전송되지 않은 대기 건에서만 누락 종료 정보를 보완할 수 있습니다.')
+            if not self.graph.get_state({'configurable':{'thread_id':job_id}}).interrupts:
+                raise ServiceError('graph_not_paused','검토 중단점을 확인한 뒤 종료 기본값을 적용하세요.')
+            candidate = complete_end_defaults(job['draft'],job['source_text'],self.settings.timezone)
+            if candidate == job['draft']:
+                return self._view(job)
+            self._set_defaulted_draft(job,candidate)
+            job['approved_hash'],job['approved_busy'],job['busy_intervals'] = None,[],[]
+            job['risk_reasons'] = risks(candidate,job['source_text'],self.settings.timezone,job['manual'],
+                                       reference_date=job['reference_date'])
+            self._save(job,bump=True,expected_version=expected_version)
+            return self._view(job)
+
+    def _set_defaulted_draft(self, job, candidate, previous_end=None):
+        fields = ('end_date','end_time')
+        previous = previous_end if previous_end is not None else {key:job['draft'][key] for key in fields}
+        resolved = {key:candidate[key] for key in fields}
+        if previous != resolved:
+            job['decisions'].append({'action':'end_defaults_applied','policy':'same_day_or_60_minutes',
+                                     'previous_end':previous,'resolved_end':resolved,'at':now()})
+        job['draft'] = candidate
+
     def _assess(self, job_id):
         job = self.store.get_job(job_id)
         if not job['manual']:
             job['draft'] = resolve_relative_dates(job['draft'], job['source_text'], job['reference_date'])
+        self._set_defaulted_draft(job,complete_end_defaults(job['draft'],job['source_text'],self.settings.timezone))
         job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, job['manual'],
                                     reference_date=job['reference_date'])
         job['busy_intervals'] = []
@@ -214,24 +242,30 @@ class CalendarAgentService:
                     candidate = EventDraft.model_validate({**candidate, **edits}).model_dump()
                 except ValidationError:
                     raise ServiceError('invalid_edits', '수정 값의 형식을 확인하세요.') from None
-                if candidate == job['draft']:
-                    raise ServiceError('no_op', '달라진 수정 값이 없습니다.')
             elif edits is not None:
                 raise ServiceError('invalid_edits', '수정 후 승인에서만 edits를 사용하세요.')
+            default_previous_end = {key:candidate[key] for key in ('end_date','end_time')}
             if action in ('approve', 'edit_approve'):
+                candidate = complete_end_defaults(candidate,job['source_text'],self.settings.timezone)
+                if action == 'edit_approve' and candidate == job['draft']:
+                    raise ServiceError('no_op','달라진 수정 값이 없습니다.')
                 interval(candidate, self.settings.timezone)
             config = {'configurable': {'thread_id': job_id}}
             if not self.graph.get_state(config).interrupts:
                 raise ServiceError('graph_not_paused', '검토 중단점을 확인하지 못했습니다. 실행 상태를 확인하세요.')
             decision = {'action': action, 'reason': reason, 'expected_version': expected_version}
             if action in ('approve', 'edit_approve'):
+                decision['default_previous_end'] = default_previous_end
                 self._preflight()
                 start, end = interval(candidate, self.settings.timezone)
                 busy = overlaps(candidate, self.calendar.busy(start, end), self.settings.timezone)
                 if any(item not in job['busy_intervals'] for item in busy):
                     if action == 'edit_approve':
                         job['decisions'].append(dict(action='edit_pending_review', edits=copy.deepcopy(edits), previous_draft=job['draft'], at=now()))
-                        job['draft'], job['manual'] = candidate, True
+                        self._set_defaulted_draft(job,candidate,default_previous_end)
+                        job['manual'] = True
+                    elif candidate != job['draft']:
+                        self._set_defaulted_draft(job,candidate,default_previous_end)
                     job['busy_intervals'] = busy
                     job['risk_reasons'] = risks(candidate, job['source_text'], self.settings.timezone, job['manual'],
                                                 reference_date=job['reference_date'])
@@ -239,6 +273,8 @@ class CalendarAgentService:
                     self._save(job, bump=True)
                     return self.get_job(job_id)
                 decision.update(approved_hash=canonical_hash(candidate), approved_busy=busy)
+                if action == 'approve' and candidate != job['draft']:
+                    decision['draft'] = candidate
                 if action == 'edit_approve':
                     decision.update(draft=candidate, edits=copy.deepcopy(edits), previous_draft=job['draft'])
             if action == 'rejudge':
@@ -273,9 +309,12 @@ class CalendarAgentService:
             job.update(draft=decision['draft'], manual=False, approved_hash=None, approved_busy=[],
                        rejudge_count=decision['rejudge_count'], last_error=None)
         if decision['action'] == 'edit_approve':
-            job['draft'], job['manual'] = decision['draft'], True
+            self._set_defaulted_draft(job,decision['draft'],decision['default_previous_end'])
+            job['manual'] = True
             job['risk_reasons'] = risks(job['draft'], job['source_text'], self.settings.timezone, True,
                                         reference_date=job['reference_date'])
+        if decision['action'] == 'approve' and 'draft' in decision:
+            self._set_defaulted_draft(job,decision['draft'],decision['default_previous_end'])
         if decision['action'] in ('approve', 'edit_approve'):
             job['approved_hash'] = decision['approved_hash']
             job['approved_busy'] = decision['approved_busy']

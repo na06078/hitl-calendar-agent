@@ -51,6 +51,7 @@ class OpenAITransportTests(OfflineCase):
             self.assertIn('reference_date',data['instructions'])
             self.assertIn('0·1·2일',data['instructions'])
             self.assertIn('시작 날짜만',data['instructions'])
+            self.assertIn('종료 기본값은 앱이',data['instructions'])
         self.assertEqual(store.calls_used(),2)
 
     def test_saved_synthetic_candidates_replay_through_the_installed_sdk(self):

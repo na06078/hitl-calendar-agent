@@ -105,6 +105,7 @@ class ServiceTests(OfflineCase):
         # 구버전 저장 결과를 같은 격리 작업/중단점에 재현합니다.
         legacy = self.service.store.get_job(job['id'])
         legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        legacy['draft']['end_time'] = None
         self.service.store.save_job(legacy)
         before = self.service.get_job(job['id'])
         with patch.object(self.calendar,'busy',side_effect=AssertionError('날짜 보완 중 Calendar 조회 금지')), \
@@ -151,6 +152,7 @@ class ServiceTests(OfflineCase):
         job = self.service.analyse(source,'2026-11-10')[0]
         legacy = self.service.store.get_job(job['id'])
         legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        legacy['draft']['end_time'] = None
         self.service.store.save_job(legacy)
         with patch.object(self.calendar,'busy',side_effect=AssertionError('날짜 보완에 Calendar 조회 금지')), \
              patch.object(self.calendar,'create',side_effect=AssertionError('날짜 보완에 등록 금지')):
@@ -190,6 +192,113 @@ class ServiceTests(OfflineCase):
         self.assertEqual(cm.exception.code, 'invalid_state')
         self.assertEqual(len(self.calendar.writes), 1)
         self.assertEqual(len(self.responses.calls), 1)
+
+    def test_approve_legacy_missing_end_uses_one_hour_without_rejudging(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        value = draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source],
+                      ambiguities=['종료 시각 없음'])
+        job = self.analyse(value,source)
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['end_date'] = legacy['draft']['end_time'] = None
+        self.service.store.save_job(legacy)
+        failure = None
+        result = None
+        try:
+            result = self.service.decide(job['id'],job['version'],'approve')
+        except ServiceError as error:
+            failure = error.code
+        self.assertIsNone(failure,'종료 누락은 사용자 당일/1시간 기본값으로 승인되어야 합니다.')
+        self.assertEqual(result['status'],'created')
+        self.assertEqual(result['draft']['end_date'],'2026-11-11')
+        self.assertEqual(result['draft']['end_time'],'15:00')
+        self.assertEqual(self.calendar.writes[0]['end']['dateTime'],'2026-11-11T15:00:00+09:00')
+        self.assertEqual(result['source_text'],source)
+        self.assertEqual(result['draft']['ambiguities'],['종료 시각 없음'])
+        self.assertEqual(len(self.responses.calls),1)
+        self.assertEqual(len(self.calendar.writes),1)
+        self.assertTrue(any(x['action']=='end_defaults_applied' for x in result['decisions']))
+
+    def test_analysis_applies_missing_end_before_the_review_is_displayed(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        value = draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source])
+        job = self.analyse(value,source)
+        self.assertEqual(job['draft']['end_date'],'2026-11-11')
+        self.assertEqual(job['draft']['end_time'],'15:00')
+        self.assertEqual(job['status'],'needs_review')
+        self.assertEqual(job['decisions'][-1]['action'],'end_defaults_applied')
+        self.assertEqual(self.calendar.writes,[])
+
+    def test_new_conflict_keeps_the_defaulted_end_for_the_next_review(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        job = self.analyse(draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source]),source)
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['end_date'] = legacy['draft']['end_time'] = None
+        self.service.store.save_job(legacy)
+        self.calendar.intervals = [{'start':'2026-11-11T05:30:00Z','end':'2026-11-11T05:45:00Z'}]
+        revised = self.service.decide(job['id'],job['version'],'approve')
+        self.assertEqual(revised['status'],'needs_review')
+        self.assertEqual(revised['draft']['end_date'],'2026-11-11')
+        self.assertEqual(revised['draft']['end_time'],'15:00')
+        self.assertIn('new_conflict',[x['code'] for x in revised['risk_reasons']])
+        self.assertEqual(self.calendar.writes,[])
+        self.assertEqual(len(self.responses.calls),1)
+        final = self.service.decide(job['id'],revised['version'],'approve')
+        self.assertEqual(final['status'],'created')
+        self.assertEqual(len(self.calendar.writes),1)
+
+    def test_pending_end_backfill_is_versioned_without_any_provider_or_resume(self):
+        from unittest.mock import patch
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        job = self.analyse(draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source]),source)
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['end_date'] = legacy['draft']['end_time'] = None
+        legacy['decisions'] = []
+        self.service.store.save_job(legacy)
+        with patch.object(self.calendar,'busy',side_effect=AssertionError('기본값 보완에 외부 조회 금지')), \
+             patch.object(self.service,'_invoke',side_effect=AssertionError('기본값 보완에 그래프 재개 금지')):
+            revised = self.service.resolve_pending_end(job['id'],job['version'])
+        self.assertEqual(revised['draft']['end_date'],'2026-11-11')
+        self.assertEqual(revised['draft']['end_time'],'15:00')
+        self.assertEqual(revised['version'],job['version']+1)
+        self.assertEqual(revised['status'],'needs_review')
+        self.assertEqual(revised['decisions'][-1]['previous_end'],{'end_date':None,'end_time':None})
+        self.assertEqual(self.service.resolve_pending_end(job['id'],revised['version']),revised)
+        with self.assertRaises(ServiceError) as error:
+            self.service.resolve_pending_end(job['id'],job['version'])
+        self.assertEqual(error.exception.code,'stale_version')
+        self.assertTrue(self.service.graph.get_state({'configurable':{'thread_id':job['id']}}).interrupts)
+        self.assertEqual(len(self.responses.calls),1)
+        self.assertEqual(self.calendar.writes,[])
+
+    def test_edit_approve_records_default_end_separately_from_the_manual_edit(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        job = self.analyse(draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source]),source)
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['end_date'] = legacy['draft']['end_time'] = None
+        legacy['decisions'] = []
+        self.service.store.save_job(legacy)
+        final = self.service.decide(job['id'],job['version'],'edit_approve',edits={'location':'회의실'})
+        self.assertEqual(final['status'],'created')
+        self.assertEqual(final['draft']['location'],'회의실')
+        self.assertEqual(final['draft']['end_time'],'15:00')
+        self.assertEqual(final['decisions'][0]['action'],'end_defaults_applied')
+        self.assertEqual(final['decisions'][-1]['edits'],{'location':'회의실'})
+        self.assertEqual(final['decisions'][0]['previous_end'],{'end_date':None,'end_time':None})
+
+    def test_edit_approve_can_apply_defaults_even_when_edited_nulls_match_the_legacy_values(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        job = self.analyse(draft(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source]),source)
+        legacy = self.service.store.get_job(job['id'])
+        legacy['draft']['end_date'] = legacy['draft']['end_time'] = None
+        self.service.store.save_job(legacy)
+        failure = None
+        try:
+            final = self.service.decide(job['id'],job['version'],'edit_approve',edits={'end_date':None,'end_time':None})
+        except ServiceError as error:
+            failure = error.code
+        self.assertIsNone(failure)
+        self.assertEqual(final['status'],'created')
+        self.assertEqual(final['draft']['end_time'],'15:00')
 
     def test_invalid_date_approve_rejected_without_side_effect(self):
         job = self.analyse()

@@ -22,6 +22,7 @@ def get_service():
 def render_notice(service, readiness):
     st.subheader("공지에서 일정 정리")
     st.caption("명확하고 충돌 없는 일정은 바로 등록하고, 확인이 필요한 일정만 승인 대기로 보냅니다.")
+    st.caption("종료 정보가 없으면 시간 일정은 1시간, 종일 일정은 시작일 당일을 기본값으로 사용합니다.")
     for issue in readiness.get("issues", []):
         st.warning(issue)
     with st.form("notice_form", clear_on_submit=False, enter_to_submit=False):
@@ -119,6 +120,21 @@ def show_candidate(job):
     date_backfilled = bool(job.get("decisions")) and job["decisions"][-1].get("action") == "relative_date_normalized"
     if date_backfilled:
         st.caption("공지 기준 날짜로 날짜를 보완했습니다. 시간 등 남은 정보는 확인한 뒤 결정해 주세요.")
+    end_defaulted = False
+    for decision in reversed(job.get('decisions',[])):
+        if decision.get('action') == 'end_defaults_applied':
+            end_defaulted = decision.get('resolved_end') == {key:draft.get(key) for key in ('end_date','end_time')}
+            if end_defaulted:
+                if draft.get('all_day'):
+                    text = '종료 날짜가 없어 시작일 당일로 설정했습니다.'
+                elif decision.get('previous_end',{}).get('end_time') in (None,''):
+                    text = '종료 시각이 없어 시작 시각 + 1시간으로 설정했습니다.'
+                else:
+                    text = '종료 날짜가 없어 시작일 당일로 설정했습니다.'
+                st.caption('사용자 기본값 적용: '+text)
+            break
+        if decision.get('action') in {'rejudge','edit_approve','edit_pending_review'}:
+            break
     for risk in job.get("risk_reasons", []):
         st.warning(risk["message"])
     if draft.get("all_day"):
@@ -134,8 +150,8 @@ def show_candidate(job):
             for busy in job["busy_intervals"]:
                 st.write(f"{busy['start']} ~ {busy['end']}")
     with st.expander("AI 추출 근거"):
-        if date_backfilled:
-            st.caption("아래 모호함은 날짜 보완 전의 모델 응답 기록입니다. 현재 날짜는 위 일정 정보에 표시됩니다.")
+        if date_backfilled or end_defaulted:
+            st.caption("아래 모호함은 보완 전의 모델 응답 기록입니다. 현재 일시는 위 일정 정보에 표시됩니다.")
         for quote in draft.get("evidence", []):
             st.text(quote)
         for ambiguity in draft.get("ambiguities", []):

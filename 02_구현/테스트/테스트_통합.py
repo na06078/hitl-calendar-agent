@@ -150,6 +150,7 @@ class ConsumerIntegrationTests(backend_harness.OfflineCase):
         job = self.service.analyse(source,'2026-11-10')[0]
         legacy = self.service.store.get_job(job['id'])
         legacy['draft']['start_date'] = legacy['draft']['end_date'] = None
+        legacy['draft']['end_time'] = None
         self.service.store.save_job(legacy)
         app = self.app()
         revised = self.service.resolve_pending_date(job['id'],job['version'])
@@ -163,6 +164,41 @@ class ConsumerIntegrationTests(backend_harness.OfflineCase):
         self.assertIsNone(revised['draft']['end_date'])
         self.assertEqual(len(self.responses.calls),1)
         self.assertEqual(self.calendar.writes,[])
+
+    def test_missing_end_notice_approves_from_the_screen_without_entering_end_fields(self):
+        source = '2026년 11월 11일 14:00에 수업을 시작합니다.'
+        value = deepcopy(DRAFT)
+        value.update(start_date='2026-11-11',end_date=None,end_time=None,evidence=[source])
+        app = self.app()
+        job = self.submit(app,value,source)
+        self.assertEqual(job['status'],'needs_review')
+        self.assertEqual(job['draft']['end_time'],'15:00')
+        self.assertTrue(any('사용자 기본값' in item.value for item in app.caption))
+        app.button(key='approve_'+job['id']).click().run()
+        self.assertFalse(app.exception,str(app.exception))
+        self.assertFalse(app.error)
+        actual = self.service.get_job(job['id'])
+        self.assertEqual(actual['status'],'created')
+        self.assertEqual(self.calendar.writes[0]['end']['dateTime'],'2026-11-11T15:00:00+09:00')
+        app.run()
+        self.assertEqual(len(self.calendar.writes),1)
+        self.assertEqual(len(self.responses.calls),1)
+
+    def test_missing_all_day_end_uses_the_same_day_and_approves_from_the_screen(self):
+        source = '2026년 11월 11일 종일 수업'
+        value = deepcopy(DRAFT)
+        value.update(start_date='2026-11-11',end_date=None,start_time=None,end_time=None,
+                     all_day=True,evidence=[source],ambiguities=['담당자 확인'])
+        app = self.app()
+        job = self.submit(app,value,source)
+        self.assertEqual(job['draft']['end_date'],'2026-11-11')
+        app.button(key='approve_'+job['id']).click().run()
+        self.assertFalse(app.exception,str(app.exception))
+        self.assertFalse(app.error)
+        self.assertEqual(self.service.get_job(job['id'])['status'],'created')
+        self.assertEqual(self.calendar.writes[0]['start'],{'date':'2026-11-11'})
+        self.assertEqual(self.calendar.writes[0]['end'],{'date':'2026-11-12'})
+        self.assertEqual(len(self.responses.calls),1)
 
     def test_null_sdk_extract_is_public_error_without_jobs_or_calendar_writes(self):
         calls = self.sdk_output(None)

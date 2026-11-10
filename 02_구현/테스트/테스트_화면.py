@@ -201,6 +201,17 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(self.service.operations, [])
 
 
+    def test_default_end_is_identified_as_user_policy_without_a_new_action(self):
+        job = synthetic_job()
+        job['decisions'] = [{'action':'end_defaults_applied','policy':'same_day_or_60_minutes',
+            'previous_end':{'end_date':None,'end_time':None},
+            'resolved_end':{'end_date':'2030-01-10','end_time':'15:00'}}]
+        self.service.jobs[job['id']] = job
+        app = self.app()
+        self.assertTrue(any('사용자 기본값' in item.value and '1시간' in item.value for item in app.caption))
+        self.assertFalse(app.button(key='approve_'+job['id']).disabled)
+        self.assertEqual(self.service.operations,[])
+
     def test_date_backfill_is_explained_without_creating_or_rejudging(self):
         job = synthetic_job()
         job['reference_date'] = '2026-11-10'

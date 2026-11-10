@@ -50,6 +50,49 @@ def interval(draft, timezone='Asia/Seoul'):
         raise ServiceError('invalid_datetime', '제목과 유효한 시작·종료 일시를 수정하세요. 종일 종료일은 마지막 포함 날짜입니다.') from None
 
 
+DEFAULT_DURATION_MINUTES = 60
+CLOCK = re.compile(r'(?:(오전|오후)\s*)?(\d{1,2})(?::(\d{2})|시(?:\s*(\d{1,2})분)?)')
+RANGE_SEPARATOR = r'\s*(?:[~∼〜～–—-]|부터)\s*'
+
+
+def complete_end_defaults(draft, source, timezone='Asia/Seoul'):
+    """종료 누락에 사용자 기본값을 적용합니다. 원문 값과 시작값은 만들지 않습니다."""
+    result = dict(draft)
+    missing_date = draft.get('end_date') in (None,'')
+    missing_time = draft.get('end_time') in (None,'')
+    if not missing_date and (draft.get('all_day') or not missing_time):
+        return result
+    scopes = [q for q in draft.get('evidence',[]) if q and q in source] or [source]
+    for text in scopes:
+        matches = list(CLOCK.finditer(text))
+        if missing_time and (any(re.fullmatch(RANGE_SEPARATOR,text[a.end():b.start()]) for a,b in zip(matches,matches[1:]))
+                or re.search(r'(?:종료|마감|끝)\s*(?:시각|시간)?\s*(?:은|는|:|：)?\s*'+CLOCK.pattern,text)):
+            return result
+        dates = list(ABSOLUTE_DATE.finditer(text))
+        if missing_date and any(re.fullmatch(RANGE_SEPARATOR,text[a.end():b.start()]) for a,b in zip(dates,dates[1:])):
+            return result
+    try:
+        start_day = date.fromisoformat(draft['start_date'])
+        if draft['all_day']:
+            if missing_date:
+                result['end_date'] = start_day.isoformat()
+            return result
+        if not missing_time:
+            if missing_date:
+                result['end_date'] = start_day.isoformat()
+            return result
+        start_clock = time.fromisoformat(draft['start_time'])
+        explicit_day = None if missing_date else date.fromisoformat(draft['end_date'])
+        anchor = datetime.combine(explicit_day or start_day,start_clock,ZoneInfo(timezone))
+        end = (anchor.astimezone(utc_timezone.utc)+timedelta(minutes=DEFAULT_DURATION_MINUTES)).astimezone(anchor.tzinfo)
+        result['end_time'] = end.strftime('%H:%M')
+        if missing_date or explicit_day == start_day:
+            result['end_date'] = end.date().isoformat()
+    except (ValueError,TypeError,KeyError,OverflowError):
+        return dict(draft)
+    return result
+
+
 def cross_day_timed(draft):
     return bool(not draft['all_day'] and draft.get('start_date') and draft.get('end_date')
                 and draft['start_date'] != draft['end_date'])
@@ -162,7 +205,7 @@ def grounded(draft, source, reference_date=None):
         if len(date_matches) == 2 and not re.fullmatch(separator, quote[date_matches[0].end():date_matches[1].start()]):
             continue
         times = []
-        time_matches = list(re.finditer(r'(?:(오전|오후)\s*)?(\d{1,2})(?::(\d{2})|시(?:\s*(\d{1,2})분)?)', quote))
+        time_matches = list(CLOCK.finditer(quote))
         for m in time_matches:
             ampm, hour, minute, krminute = m.groups()
             h, minute = int(hour), int(minute or krminute or 0)
