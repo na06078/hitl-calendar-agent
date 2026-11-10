@@ -84,7 +84,7 @@ class CalendarAgentService:
                 issues.append('Google 연결 버튼으로 인증 자료를 준비하세요.')
             if not s.calendar_id.strip():
                 issues.append('대상 캘린더 ID를 명시하세요.')
-            if used >= s.llm_call_limit:
+            if s.llm_call_limit is not None and used >= s.llm_call_limit:
                 issues.append('승인된 모델 호출 잔여 횟수가 없습니다.')
             return dict(model=s.model, api_key_set=bool(s.api_key.strip()), client_file_present=client,
                         token_file_present=token, target_calendar_set=bool(s.calendar_id.strip()),

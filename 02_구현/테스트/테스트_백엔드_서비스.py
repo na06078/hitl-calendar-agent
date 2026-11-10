@@ -73,6 +73,27 @@ class ServiceTests(OfflineCase):
         self.assertEqual(len(jobs), 1)
         return jobs[0]
 
+    def test_unlimited_readiness_keeps_usage_without_exhaustion_or_model_call(self):
+        from dataclasses import replace
+        self.service.close()
+        self.settings = replace(self.settings, llm_call_limit=None)
+        self.open_service()
+        for _ in range(3):
+            self.service.store.reserve_call(3, 'extract')
+        caught = None
+        ready = None
+        try:
+            ready = self.service.readiness()
+        except Exception as error:
+            caught = type(error).__name__
+        self.assertIsNone(caught, '제한 없음은 사용 횟수와 비교해 막지 않아야 합니다.')
+        self.assertIsNone(ready['llm_call_limit'])
+        self.assertEqual(ready['llm_calls_used'], 3)
+        self.assertTrue(ready['can_analyse'])
+        self.assertEqual(ready['issues'], [])
+        self.assertEqual(self.responses.calls, [])
+        self.assertEqual(self.calendar.writes, [])
+
     def test_automatic_creation_readback_and_no_duplicate_after_reload(self):
         job = self.analyse(draft())
         self.assertEqual(job['status'], 'created')

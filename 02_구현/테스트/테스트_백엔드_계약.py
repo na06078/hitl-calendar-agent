@@ -80,6 +80,33 @@ class ModelTests(OfflineCase):
         self.assertEqual(len(calls), 1)
 
 class StoreTests(OfflineCase):
+    def test_unlimited_calls_keep_the_existing_ledger_and_survive_reopen(self):
+        from 일정도우미.저장소 import Store
+        from 일정도우미.형식 import ServiceError
+        path = self.root / '제한없는장부.sqlite'
+        store = Store(path)
+        for _ in range(3):
+            store.reserve_call(3, 'extract')
+        caught = None
+        try:
+            store.reserve_call(None, 'extract')
+            store.reserve_call(None, 'extract')
+        except Exception as error:
+            caught = type(error).__name__
+        if caught is not None:
+            store.close()
+        self.assertIsNone(caught, '제한 없음에서는 기존 사용 횟수와 무관하게 기록해야 합니다.')
+        self.assertEqual(store.calls_used(), 5)
+        store.close()
+        reopened = Store(path)
+        self.addCleanup(reopened.close)
+        reopened.reserve_call(None, 'extract')
+        self.assertEqual(reopened.calls_used(), 6)
+        with self.assertRaises(ServiceError) as error:
+            reopened.reserve_call(6, 'extract')
+        self.assertEqual(error.exception.code, 'model_budget')
+        self.assertEqual(reopened.calls_used(), 6)
+
     def test_budget_reservation_survives_reopen(self):
         from 일정도우미.저장소 import Store
         from 일정도우미.형식 import ServiceError
@@ -140,6 +167,25 @@ class RuleTests(OfflineCase):
         self.assertIn('unsupported_grounding', [r['code'] for r in risks(draft(evidence=[injected]), injected)])
 
 class ConfigTests(OfflineCase):
+    def test_unlimited_call_setting_is_explicit_and_not_a_large_fake_cap(self):
+        env = self.root / '.env'
+        env.write_text('LLM_CALL_LIMIT=unlimited\n', encoding='utf-8')
+        caught = None
+        settings = None
+        try:
+            settings = Settings.load(self.root)
+        except Exception as error:
+            caught = type(error).__name__
+        self.assertIsNone(caught, 'unlimited는 명시적 제한 없음으로 읽어야 합니다.')
+        self.assertIsNone(settings.llm_call_limit)
+        env.write_text('LLM_CALL_LIMIT=3\n', encoding='utf-8')
+        self.assertEqual(Settings.load(self.root).llm_call_limit, 3)
+        env.unlink()
+        self.assertIsNone(Settings.load(self.root).llm_call_limit)
+        self.assertIsNone(Settings(self.root).llm_call_limit)
+        with self.assertRaises(ValueError):
+            Settings(self.root, llm_call_limit=-1)
+
     def test_untrusted_interpolation_and_real_project_escape(self):
         project = Path(__file__).resolve().parents[2]
         (self.root / '.env').write_text('OPENAI_API_KEY=${OPENAI_API_KEY}\nDATA_DIR=' + project.as_posix() + '\n', encoding='utf-8')

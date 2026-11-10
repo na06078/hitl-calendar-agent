@@ -63,7 +63,7 @@ class Store:
 
     def reserve_call(self, limit, kind):
         with self.lock, self.conn:
-            if self.calls_used() >= limit:
+            if limit is not None and self.calls_used() >= limit:
                 raise ServiceError('model_budget', '모델 호출 누적 상한에 도달했습니다. 승인된 상한을 확인하세요.')
             self.conn.execute('INSERT INTO model_calls(kind, reserved_at) VALUES (?,?)', (kind, now()))
 

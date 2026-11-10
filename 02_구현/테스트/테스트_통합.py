@@ -103,6 +103,28 @@ class ConsumerIntegrationTests(backend_harness.OfflineCase):
         self.addCleanup(client.close)
         return calls
 
+    def test_unlimited_screen_submission_exceeds_the_old_cap_and_keeps_usage(self):
+        from dataclasses import replace
+        settings = replace(self.service.settings, llm_call_limit=None)
+        self.service.settings = settings
+        self.service.model.settings = settings
+        for _ in range(3):
+            self.service.store.reserve_call(3, 'extract')
+        self.responses.results.append({'events': []})
+        app = self.app()
+        self.assertFalse(app.button(key='analyse_notice').disabled)
+        app.text_area(key='notice_text').input('일정 없는 합성 공지')
+        app.button(key='analyse_notice').click().run()
+        self.assertFalse(app.exception, str(app.exception))
+        self.assertFalse(app.error)
+        self.assertEqual(len(self.responses.calls), 1)
+        self.assertEqual(self.service.store.calls_used(), 4)
+        self.assertEqual(self.service.list_jobs(), [])
+        self.assertEqual(self.calendar.writes, [])
+        app.run()
+        self.assertEqual(len(self.responses.calls), 1)
+        self.assertEqual(self.service.store.calls_used(), 4)
+
     def test_null_sdk_extract_is_public_error_without_jobs_or_calendar_writes(self):
         calls = self.sdk_output(None)
         app = self.app()

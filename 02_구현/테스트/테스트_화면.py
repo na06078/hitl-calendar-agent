@@ -162,6 +162,15 @@ class ScreenTests(unittest.TestCase):
         self.assertEqual(app.title[0].value, "일정 등록 에이전트")
         self.assertEqual(self.service.operations, [])
 
+    def test_unlimited_usage_is_named_and_analysis_stays_available(self):
+        self.service.ready.update(llm_call_limit=None, llm_calls_used=3)
+        app = self.app()
+        captions = [item.value for item in app.caption]
+        self.assertTrue(any('모델 요청 사용 3회 / 호출 제한 없음' in value for value in captions))
+        self.assertFalse(any('허용 None' in value for value in captions))
+        self.assertFalse(app.button(key='analyse_notice').disabled)
+        self.assertEqual(self.service.operations, [])
+
     def test_empty_view_separates_input_review_history_and_connection(self):
         app = self.app()
         self.assertEqual([tab.label for tab in app.tabs], ["새 공지", "승인 대기", "처리 기록", "연결 준비"])

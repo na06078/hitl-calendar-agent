@@ -75,7 +75,9 @@ def render_connection(service, readiness):
         else:
             st.session_state["flash"] = "계정 연결 절차를 마쳤습니다. 파일 준비 상태와 등록 대상 설정을 확인해 주세요."
             st.rerun()
-    st.caption(f"모델 요청 사용 {readiness.get('llm_calls_used', 0)} / 허용 {readiness.get('llm_call_limit', 0)}회")
+    used = readiness.get('llm_calls_used', 0)
+    limit = readiness.get('llm_call_limit')
+    st.caption(f"모델 요청 사용 {used}회 / 호출 제한 없음" if limit is None else f"모델 요청 사용 {used} / 허용 {limit}회")
     if st.button("설정 다시 불러오기", key="reload_settings",
                  help="프로젝트 .env를 변경했을 때 사용합니다. 저장된 작업과 승인 대기 기록은 삭제하지 않습니다."):
         try:
